@@ -84,17 +84,15 @@ footer{text-align:center;padding:24px 20px 12px;font-size:.58rem;color:var(--mut
       <select class="inp" id="jugador">
         <option value="">Cargando lista…</option>
       </select>
-      <div class="bq-row2">
-        <div>
-          <label class="lbl">Fecha</label>
-          <input class="inp" id="fecha" type="date" style="margin-bottom:0">
-        </div>
-        <div>
-          <label class="lbl">Tipo de sesión</label>
-          <div class="bq-pillgroup" id="tipoSesion" style="margin-top:0">
-            <div class="bq-pill" data-val="Entre semana">Semana</div>
-            <div class="bq-pill" data-val="Fin de semana / Festivo">Finde</div>
-          </div>
+      <div class="bq-field">
+        <label class="lbl">Fecha</label>
+        <input class="inp" id="fecha" type="date" style="margin-bottom:0">
+      </div>
+      <div class="bq-field" style="margin-top:14px">
+        <label class="lbl">Tipo de sesión</label>
+        <div class="bq-pillgroup" id="tipoSesion" style="margin-top:6px">
+          <div class="bq-pill" data-val="Entre semana">Entre semana</div>
+          <div class="bq-pill" data-val="Fin de semana / Festivo">Fin de semana / Festivo</div>
         </div>
       </div>
     </div>
