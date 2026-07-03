@@ -47,6 +47,11 @@ main{position:relative;z-index:2;max-width:1180px;margin:0 auto;padding:26px 24p
 .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
 @media(max-width:900px){.kpi-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:520px){.kpi-grid{grid-template-columns:1fr}}
+.legend-card{background:rgba(192,39,45,.05);border:1px solid rgba(192,39,45,.2);border-radius:14px;padding:15px 18px;margin-bottom:16px}
+.legend-title{font-family:'Barlow Condensed';font-weight:700;font-size:.8rem;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;color:rgba(255,255,255,.85)}
+.legend-body{font-size:.78rem;color:var(--muted);line-height:1.6}
+.legend-body strong{color:rgba(255,255,255,.85);font-weight:600}
+
 .kpi-hero{background:var(--card);border:1px solid var(--border2);border-radius:16px;padding:20px 22px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px}
 .kpi-hero-l .lbl{font-family:'Barlow Condensed';font-size:.62rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted)}
 .kpi-hero-l .val{font-family:'Barlow Condensed';font-weight:900;font-size:2.6rem;line-height:1;margin-top:2px}
@@ -138,6 +143,16 @@ footer{text-align:center;padding:26px 20px 14px;font-size:.6rem;color:var(--mute
 <main>
 
   <div class="sec-lbl">Resumen general del equipo</div>
+
+  <div class="legend-card">
+    <div class="legend-title">📖 Cómo leer estas métricas</div>
+    <div class="legend-body">
+      En las 7 preguntas, la escala siempre va de <strong>1 (peor estado)</strong> a <strong>5</strong> (o <strong>10</strong> en el caso de RPE) <strong>= mejor estado</strong> — sin importar el nombre de la pregunta. Por ejemplo: en "Nivel de estrés", 5 significa <em>muy relajado</em>, no "muy estresado". Lo mismo aplica en las gráficas de radar más abajo.
+      <br><br>
+      El color de cada card es automático: <span style="color:var(--green)">🟢 verde</span> = buen estado, <span style="color:var(--yellow)">🟡 amarillo</span> = regular / a vigilar, <span style="color:var(--danger)">🔴 rojo</span> = requiere atención. El <strong>Índice de bienestar</strong> (arriba) suma Fatiga + Daño muscular + Estrés + Ánimo, va de 4 a 20, y entre más alto, mejor está esa persona ese día.
+    </div>
+  </div>
+
   <div class="kpi-hero">
     <div class="kpi-hero-l">
       <div class="lbl">Índice de bienestar promedio</div>
@@ -159,7 +174,7 @@ footer{text-align:center;padding:26px 20px 14px;font-size:.6rem;color:var(--mute
       <div class="chart-wrap"><canvas id="chartTrend"></canvas></div>
     </div>
     <div class="chart-card">
-      <h3>Perfil promedio del equipo</h3>
+      <h3>Perfil promedio del equipo <span style="color:var(--muted);font-weight:500;text-transform:none;letter-spacing:0">(más afuera = mejor)</span></h3>
       <div class="chart-wrap"><canvas id="chartRadar"></canvas></div>
     </div>
   </div>
@@ -188,7 +203,7 @@ footer{text-align:center;padding:26px 20px 14px;font-size:.6rem;color:var(--mute
         <div class="chart-wrap" style="height:220px"><canvas id="chartPlayerTrend"></canvas></div>
       </div>
       <div>
-        <h3>Perfil vs. promedio del equipo</h3>
+        <h3>Perfil vs. promedio del equipo <span style="color:var(--muted);font-weight:500;text-transform:none;letter-spacing:0">(más afuera = mejor)</span></h3>
         <div class="chart-wrap" style="height:220px"><canvas id="chartPlayerRadar"></canvas></div>
       </div>
     </div>
@@ -426,7 +441,7 @@ function renderRadarChart(){
   chartRadar = new Chart(ctx, {
     type:'radar',
     data:{
-      labels:['Calidad sueño','Fatiga','Daño muscular','Estrés','Ánimo'],
+      labels:['Calidad sueño','Recuperación','Sensación muscular','Relajación','Ánimo'],
       datasets:[{
         label:'Equipo',
         data:[t.calidad_sueno,t.fatiga,t.dano,t.estres,t.animo].map(v=>v===null?0:v),
@@ -520,7 +535,7 @@ function renderPlayer(nombre){
   chartPlayerRadar = new Chart(ctxR, {
     type:'radar',
     data:{
-      labels:['Calidad sueño','Fatiga','Daño muscular','Estrés','Ánimo'],
+      labels:['Calidad sueño','Recuperación','Sensación muscular','Relajación','Ánimo'],
       datasets:[
         {label:nombre, data:[p.calidad_sueno,p.fatiga,p.dano,p.estres,p.animo].map(v=>v===null?0:v), borderColor:'#e03035', backgroundColor:'rgba(224,48,53,.2)', pointBackgroundColor:'#e03035'},
         {label:'Equipo', data:[t.calidad_sueno,t.fatiga,t.dano,t.estres,t.animo].map(v=>v===null?0:v), borderColor:'rgba(255,255,255,.35)', backgroundColor:'rgba(255,255,255,.05)', pointBackgroundColor:'rgba(255,255,255,.6)'}
