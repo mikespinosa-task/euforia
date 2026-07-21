@@ -109,12 +109,6 @@ header h1{margin:0;font-size:19px;color:#fff}
     </div>
 
     <div class="panel">
-      <h2>Jugadores del equipo</h2>
-      <p class="hint" style="margin-top:0">Se sincroniza automático desde la pestaña "jugadores" del Sheet.</p>
-      <div id="roster-list"></div>
-    </div>
-
-    <div class="panel">
       <h2>Biblioteca</h2>
       <div class="pillset" id="filter-fase"></div>
       <div class="pillset" id="filter-form" style="margin-top:6px"></div>
@@ -401,19 +395,35 @@ async function fetchCsv(tab){
   return parsed.data;
 }
 
-async function callScript(action,params){
-  if(!APPS_SCRIPT_URL || APPS_SCRIPT_URL.indexOf('PEGA_AQUI')===0){
-    return {ok:false,error:'Falta configurar APPS_SCRIPT_URL en el HTML.'};
-  }
-  const url=new URL(APPS_SCRIPT_URL);
-  url.searchParams.set('action',action);
-  Object.keys(params||{}).forEach(k=>url.searchParams.set(k,params[k]));
-  try{
-    const res=await fetch(url.toString());
-    return await res.json();
-  }catch(e){
-    return {ok:false,error:'No se pudo conectar con Apps Script.'};
-  }
+function callScript(action,params){
+  return new Promise(resolve=>{
+    if(!APPS_SCRIPT_URL || APPS_SCRIPT_URL.indexOf('PEGA_AQUI')===0){
+      resolve({ok:false,error:'Falta configurar APPS_SCRIPT_URL en el HTML.'});
+      return;
+    }
+    const cbName='jsonp_cb_'+Date.now()+'_'+Math.random().toString(36).slice(2,8);
+    const url=new URL(APPS_SCRIPT_URL);
+    url.searchParams.set('action',action);
+    url.searchParams.set('callback',cbName);
+    Object.keys(params||{}).forEach(k=>url.searchParams.set(k,params[k]));
+
+    const script=document.createElement('script');
+    const timeout=setTimeout(()=>{
+      cleanup();
+      resolve({ok:false,error:'Tiempo de espera agotado conectando con Apps Script.'});
+    },15000);
+
+    function cleanup(){
+      clearTimeout(timeout);
+      delete window[cbName];
+      if(script.parentNode)script.parentNode.removeChild(script);
+    }
+
+    window[cbName]=(data)=>{ cleanup(); resolve(data) };
+    script.onerror=()=>{ cleanup(); resolve({ok:false,error:'No se pudo conectar con Apps Script.'}) };
+    script.src=url.toString();
+    document.body.appendChild(script);
+  });
 }
 
 document.getElementById('btn-save').onclick=async()=>{
@@ -512,12 +522,6 @@ async function loadRoster(){
     const rows=await fetchCsv('jugadores');
     state.roster=rows.map(r=>r.Nombre||r.nombre).filter(Boolean);
   }catch(e){ state.roster=[] }
-  renderRoster();
-}
-function renderRoster(){
-  const list=document.getElementById('roster-list');
-  if(state.roster.length===0){ list.innerHTML='<div class="empty">No se pudo leer la pestaña "jugadores" del Sheet.</div>'; renderAssign(); return }
-  list.innerHTML=state.roster.map(name=>`<div class="roster-row"><span>${name}</span></div>`).join('');
   renderAssign();
 }
 
