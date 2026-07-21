@@ -492,7 +492,9 @@ async function generateFromText(){
     statusEl.textContent='Jugada generada. Revisa y ajusta las posiciones si hace falta.';
     statusEl.className='status';
   }else{
-    statusEl.textContent='No se pudo generar: '+(res && res.error?res.error:'intenta con más detalle.');
+    let errMsg='No se pudo generar: '+(res && res.error?res.error:'intenta con más detalle.');
+    if(res && res.raw){ errMsg += ' — respuesta: '+res.raw.slice(0,200); }
+    statusEl.textContent=errMsg;
     statusEl.className='status err';
   }
 }
