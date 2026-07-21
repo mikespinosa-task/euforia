@@ -395,56 +395,23 @@ async function fetchCsv(tab){
   return parsed.data;
 }
 
-function callScript(action,params){
-  return new Promise(resolve=>{
-    if(!APPS_SCRIPT_URL || APPS_SCRIPT_URL.indexOf('PEGA_AQUI')===0){
-      resolve({ok:false,error:'Falta configurar APPS_SCRIPT_URL en el HTML.'});
-      return;
-    }
-    const url=new URL(APPS_SCRIPT_URL);
-    url.searchParams.set('action',action);
-    url.searchParams.set('transport','iframe');
-    Object.keys(params||{}).forEach(k=>url.searchParams.set(k,params[k]));
-
-    const iframe=document.createElement('iframe');
-    iframe.style.display='none';
-    let done=false;
-
-    const timeout=setTimeout(()=>{
-      if(done)return;
-      done=true;
-      cleanup();
-      resolve({ok:false,error:'Tiempo de espera agotado conectando con Apps Script.'});
-    },30000);
-
-    function cleanup(){
-      clearTimeout(timeout);
-      window.removeEventListener('message',onMessage);
-      if(iframe.parentNode)iframe.parentNode.removeChild(iframe);
-    }
-
-    function onMessage(ev){
-      if(done)return;
-      if(typeof ev.origin==='string' && ev.origin.indexOf('googleusercontent.com')===-1)return;
-      if(typeof ev.data!=='string')return;
-      let parsed;
-      try{ parsed=JSON.parse(ev.data) }catch(e){ return }
-      done=true;
-      cleanup();
-      resolve(parsed);
-    }
-    window.addEventListener('message',onMessage);
-
-    iframe.src=url.toString();
-    document.body.appendChild(iframe);
-  });
+async function callScript(action,params){
+  if(!APPS_SCRIPT_URL || APPS_SCRIPT_URL.indexOf('PEGA_AQUI')===0){
+    return {ok:false,error:'Falta configurar APPS_SCRIPT_URL en el HTML.'};
+  }
+  try{
+    const res=await fetch(APPS_SCRIPT_URL,{method:'POST',body:JSON.stringify({action,...params})});
+    return await res.json();
+  }catch(e){
+    return {ok:false,error:'No se pudo conectar con Apps Script.'};
+  }
 }
 
 document.getElementById('btn-save').onclick=async()=>{
   if(!state.play.nombre.trim()){alert('Ponle nombre a la jugada primero.');return}
   const btn=document.getElementById('btn-save');
   btn.disabled=true;btn.textContent='Guardando...';
-  const res=await callScript('save_play',{play:JSON.stringify(state.play)});
+  const res=await callScript('save_play',{play:state.play});
   btn.disabled=false;btn.textContent='Guardar';
   if(res && res.ok){ loadGallery(); alert('Jugada guardada en el Sheet.') }
   else{ alert('No se pudo guardar: '+(res && res.error?res.error:'error desconocido')) }
