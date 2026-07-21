@@ -401,16 +401,15 @@ async function fetchCsv(tab){
   return parsed.data;
 }
 
-async function postToScript(payload){
+async function callScript(action,params){
   if(!APPS_SCRIPT_URL || APPS_SCRIPT_URL.indexOf('PEGA_AQUI')===0){
     return {ok:false,error:'Falta configurar APPS_SCRIPT_URL en el HTML.'};
   }
+  const url=new URL(APPS_SCRIPT_URL);
+  url.searchParams.set('action',action);
+  Object.keys(params||{}).forEach(k=>url.searchParams.set(k,params[k]));
   try{
-    const res=await fetch(APPS_SCRIPT_URL,{
-      method:'POST',
-      headers:{'Content-Type':'text/plain'},
-      body:JSON.stringify(payload)
-    });
+    const res=await fetch(url.toString());
     return await res.json();
   }catch(e){
     return {ok:false,error:'No se pudo conectar con Apps Script.'};
@@ -421,7 +420,7 @@ document.getElementById('btn-save').onclick=async()=>{
   if(!state.play.nombre.trim()){alert('Ponle nombre a la jugada primero.');return}
   const btn=document.getElementById('btn-save');
   btn.disabled=true;btn.textContent='Guardando...';
-  const res=await postToScript({action:'save_play',play:state.play});
+  const res=await callScript('save_play',{play:JSON.stringify(state.play)});
   btn.disabled=false;btn.textContent='Guardar';
   if(res && res.ok){ loadGallery(); alert('Jugada guardada en el Sheet.') }
   else{ alert('No se pudo guardar: '+(res && res.error?res.error:'error desconocido')) }
@@ -491,7 +490,7 @@ async function generateFromText(){
   const statusEl=document.getElementById('ai-status');
   if(!input){statusEl.textContent='Escribe una descripción primero.';statusEl.className='status err';return}
   statusEl.textContent='Generando...';statusEl.className='status';
-  const res=await postToScript({action:'generate_ai',description:input});
+  const res=await callScript('generate_ai',{description:input});
   if(res && res.ok && res.play){
     const parsed=res.play;
     parsed.id='play_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
