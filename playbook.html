@@ -511,7 +511,7 @@ document.getElementById('btn-ai').onclick=generateFromText;
 async function loadRoster(){
   try{
     const rows=await fetchCsv('jugadores');
-    state.roster=rows.map(r=>r.Apodo||r.apodo).filter(Boolean);
+    state.roster=rows.map(r=>r.Nombre||r.nombre).filter(Boolean);
   }catch(e){ state.roster=[] }
   renderRoster();
 }
