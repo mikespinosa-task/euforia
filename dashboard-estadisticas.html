@@ -33,6 +33,10 @@ nav::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.15);border-radius:2px
 .nav-btn{padding:13px 18px;background:none;border:none;border-bottom:2.5px solid transparent;color:rgba(255,255,255,0.38);font-family:'Barlow Condensed',sans-serif;font-size:0.82rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:all 0.15s;white-space:nowrap}
 .nav-btn:hover{color:rgba(255,255,255,0.72)}
 .nav-btn.active{color:#fff;border-bottom-color:var(--red)}
+.torneo-bar{background:var(--black2);border-bottom:1px solid rgba(255,255,255,0.06);padding:10px 28px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.tb-lbl{font-family:'Barlow Condensed',sans-serif;font-size:0.68rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,0.5)}
+.tb-sel{background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);color:#fff}
+.tb-sel:focus{outline:none;border-color:var(--red)}
 main{max-width:1300px;margin:0 auto;padding:24px 28px}
 .section{display:none}.section.active{display:block;animation:fadeUp 0.2s ease}
 @keyframes fadeUp{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
@@ -121,6 +125,7 @@ footer strong{color:rgba(255,255,255,0.55)}
   header{padding:0 14px;height:54px}.hdr-badge{display:none}
   nav{padding:0 10px}.nav-btn{padding:11px 12px;font-size:0.72rem;letter-spacing:1px}
   main{padding:14px}.mc-grid{grid-template-columns:repeat(3,1fr);gap:8px}.mc-val{font-size:1.5rem}
+  .torneo-bar{padding:8px 14px}
   .cg2,.cg3{grid-template-columns:1fr}
   .phdr{padding:14px 16px;gap:12px}.p-name{font-size:1.35rem}
   .pills{gap:6px}.pill{padding:5px 9px;min-width:44px}.pill-v{font-size:1.1rem}
@@ -153,6 +158,11 @@ footer strong{color:rgba(255,255,255,0.55)}
   <button class="nav-btn" onclick="showTab('comparar',this)">Comparar</button>
   <button class="nav-btn" onclick="showTab('lineas',this)">Líneas</button>
 </nav>
+
+<div class="torneo-bar">
+  <span class="tb-lbl">🏆 Torneo</span>
+  <select class="sel tb-sel" id="torneo-sel" onchange="setTorneo(this.value)"><option value="all">Todos los torneos</option></select>
+</div>
 
 <main>
   <div id="tab-resumen" class="section active">
@@ -218,8 +228,8 @@ const GC='#1d6b3e', RC='#c0272d', BC='#1a5fa0', GLC='#a07800';
 let D = { partidos:[], puntos:[], stats:[], statsXP:[], jugadores:[], homolog:{} };
 let activeMetric = 'eficiencia';
 let lineFilter = 'all';
+let activeTorneo = 'all';
 let charts = {};
-let totalPuntosTemporada = 0;
 
 // ── FETCH ──────────────────────────────────────────
 function sheetUrl(tab){ return `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tab)}&t=${Date.now()}`; }
@@ -236,6 +246,49 @@ function splitCSVLine(line){
 }
 function n(v){ return parseFloat(v)||0; }
 function pm(s){ return n(s.goles)+n(s.asistencias)+n(s.defensas)-n(s.drops)-n(s.throwaways); }
+
+// ── FILTRO DE TORNEO (global, afecta todo el tablero) ──────────────
+function fPartidos(){ return activeTorneo==='all' ? D.partidos : D.partidos.filter(p=>p.torneo===activeTorneo); }
+function fPuntos(){
+  if(activeTorneo==='all') return D.puntos;
+  const ids=new Set(fPartidos().map(p=>p.game_id));
+  return D.puntos.filter(p=>ids.has(p.game_id));
+}
+function fStatsXP(){
+  if(activeTorneo==='all') return D.statsXP;
+  const ids=new Set(fPartidos().map(p=>p.game_id));
+  return D.statsXP.filter(s=>ids.has(s.game_id));
+}
+// Suma un conjunto de filas de stats (todas de un mismo jugador o de un grupo) y recalcula los % derivados
+function sumRows(rows){
+  const t={puntos_jugados:0,puntos_O:0,puntos_D:0,goles:0,asistencias:0,catches:0,lanzamientos:0,completados:0,throwaways:0,drops:0,defensas:0,holds:0,holds_lost:0,breaks:0,breaks_conceded:0};
+  rows.forEach(s=>{ Object.keys(t).forEach(f=>{ t[f]+=n(s[f]); }); });
+  t.completion_pct = t.lanzamientos>0 ? Math.round(t.completados/t.lanzamientos*1000)/10 : 0;
+  t.pm_O = t.holds - t.holds_lost;
+  t.pm_D = t.breaks - t.breaks_conceded;
+  t.hold_pct = t.puntos_O>0 ? Math.round(t.holds/t.puntos_O*1000)/10 : 0;
+  t.break_pct = t.puntos_D>0 ? Math.round(t.breaks/t.puntos_D*1000)/10 : 0;
+  return t;
+}
+// Stats acumuladas por jugador — recalculadas en vivo desde stats_x_partido según el filtro de torneo activo
+function fStats(){
+  const groups={};
+  fStatsXP().forEach(s=>{ const k=s.jugador; if(!groups[k]) groups[k]=[]; groups[k].push(s); });
+  return Object.entries(groups).map(([jugador,rows])=>({ jugador, ...sumRows(rows) }));
+}
+function populateTorneoSelect(){
+  const sel=document.getElementById('torneo-sel'); if(!sel) return;
+  const torneos=[...new Set(D.partidos.map(p=>p.torneo).filter(Boolean))];
+  const prev=sel.value||activeTorneo;
+  sel.innerHTML=`<option value="all">Todos los torneos</option>`+torneos.map(t=>`<option value="${t}">${t}</option>`).join('');
+  sel.value=(prev==='all'||torneos.includes(prev))?prev:'all';
+  activeTorneo=sel.value;
+}
+function setTorneo(v){
+  activeTorneo=v;
+  populateSelects();
+  renderResumen(); renderGameDetail(); renderPlayerProfile(); renderCompare(); renderLines();
+}
 
 // ── SORTING ────────────────────────────────────────
 const sortState = {};
@@ -281,9 +334,8 @@ async function loadAll(){
     D.partidos=partidos; D.puntos=puntos; D.stats=stats; D.statsXP=statsXP; D.jugadores=jugadores;
     D.homolog={};
     jugadores.forEach(j=>{ if(j.apodo&&j.nombre) D.homolog[j.apodo.trim()]=j.nombre.trim(); });
-    // Total puntos temporada = total filas en puntos
-    totalPuntosTemporada = D.puntos.length || D.stats.reduce((s,x)=>s+n(x.puntos_jugados),0);
     destroyCharts();
+    populateTorneoSelect();
     renderResumen(); populateSelects(); renderGameDetail(); renderPlayerProfile(); renderCompare(); renderLines();
   } catch(e) {
     document.getElementById('resumen-content').innerHTML=`<div class="error-wrap">❌ Error: ${e.message}<br><small>Verifica que el Sheet sea público.</small></div>`;
@@ -303,8 +355,8 @@ function showTab(tab,btn){
 
 // ── TAB 1: RESUMEN ─────────────────────────────────
 function renderResumen(){
-  const p=D.partidos;
-  if(!p.length){ document.getElementById('resumen-content').innerHTML='<div class="error-wrap">Sin datos de partidos aún.</div>'; return; }
+  const p=fPartidos();
+  if(!p.length){ document.getElementById('resumen-content').innerHTML='<div class="error-wrap">Sin partidos para este torneo.</div>'; return; }
   const wins=p.filter(x=>x.resultado==='W').length, losses=p.length-wins;
   const gf=p.reduce((s,x)=>s+n(x.nuestros),0), gc=p.reduce((s,x)=>s+n(x.suyos),0), diff=gf-gc;
   const byTorneo={};
@@ -321,8 +373,8 @@ function renderResumen(){
       </tr>`).join('')}
     </tbody></table></div></div>`).join('');
 
-  const statsS=[...D.stats];
-  const tPP=totalPuntosTemporada||1;
+  const statsS=fStats();
+  const tPP=fPuntos().length||1;
   const sumG=statsS.reduce((s,x)=>s+n(x.goles),0);
   const sumA=statsS.reduce((s,x)=>s+n(x.asistencias),0);
   const sumD=statsS.reduce((s,x)=>s+n(x.defensas),0);
@@ -361,8 +413,8 @@ function renderResumen(){
     </tr>`;
   }).join('');
 
-  const topChart=[...D.stats].sort((a,b)=>n(b.goles)-n(a.goles)).slice(0,12);
-  const compStats=D.stats.filter(s=>n(s.lanzamientos)>=10).sort((a,b)=>n(b.completion_pct)-n(a.completion_pct));
+  const topChart=[...statsS].sort((a,b)=>n(b.goles)-n(a.goles)).slice(0,12);
+  const compStats=statsS.filter(s=>n(s.lanzamientos)>=10).sort((a,b)=>n(b.completion_pct)-n(a.completion_pct));
 
   document.getElementById('resumen-content').innerHTML=`
     <div class="sh"><h2>Resumen del Torneo</h2><div class="sh-line"></div></div>
@@ -431,7 +483,8 @@ function buildChartTop(s){
 }
 function buildChartDonut(){
   const ctx=document.getElementById('chart-donut'); if(!ctx) return;
-  const tG=D.stats.reduce((s,x)=>s+n(x.goles),0), tA=D.stats.reduce((s,x)=>s+n(x.asistencias),0), tD=D.stats.reduce((s,x)=>s+n(x.defensas),0);
+  const statsF=fStats();
+  const tG=statsF.reduce((s,x)=>s+n(x.goles),0), tA=statsF.reduce((s,x)=>s+n(x.asistencias),0), tD=statsF.reduce((s,x)=>s+n(x.defensas),0);
   charts.donut=new Chart(ctx,{type:'doughnut',data:{labels:['Goles','Asistencias','Defensas'],
     datasets:[{data:[tG,tA,tD],backgroundColor:[RC,GC,BC],borderWidth:2}]},
     options:{responsive:true,plugins:{legend:{position:'bottom',labels:{font:{size:9}}}}}});
@@ -439,7 +492,7 @@ function buildChartDonut(){
 function buildChartOline(){
   const ctx=document.getElementById('chart-oline'); if(!ctx) return;
   const gm={};
-  D.puntos.forEach(p=>{ if(p.line_type!=='O') return; const k=p.rival||p.game_id; if(!gm[k]) gm[k]={s:0,t:0}; gm[k].t++; if(p.goleador) gm[k].s++; });
+  fPuntos().forEach(p=>{ if(p.line_type!=='O') return; const k=p.rival||p.game_id; if(!gm[k]) gm[k]={s:0,t:0}; gm[k].t++; if(p.goleador) gm[k].s++; });
   const labels=Object.keys(gm).map(k=>'vs '+k);
   charts.oline=new Chart(ctx,{type:'bar',data:{labels,datasets:[
     {label:'Conv.',data:Object.values(gm).map(v=>v.s),backgroundColor:'rgba(192,39,45,0.65)',borderColor:RC,borderWidth:1},
@@ -450,7 +503,7 @@ function buildChartOline(){
 function buildChartConnections(){
   const ctx=document.getElementById('chart-conn'); if(!ctx) return;
   const cm={};
-  D.puntos.forEach(p=>{ if(p.asistente&&p.goleador&&p.asistente!=='Anonymous'&&p.goleador!=='Anonymous'){ const k=`${homolog(p.asistente)} → ${homolog(p.goleador)}`; cm[k]=(cm[k]||0)+1; } });
+  fPuntos().forEach(p=>{ if(p.asistente&&p.goleador&&p.asistente!=='Anonymous'&&p.goleador!=='Anonymous'){ const k=`${homolog(p.asistente)} → ${homolog(p.goleador)}`; cm[k]=(cm[k]||0)+1; } });
   const sorted=Object.entries(cm).sort((a,b)=>b[1]-a[1]).slice(0,10);
   charts.conn=new Chart(ctx,{type:'bar',data:{labels:sorted.map(x=>x[0]),
     datasets:[{data:sorted.map(x=>x[1]),backgroundColor:'rgba(29,107,62,0.55)',borderColor:GC,borderWidth:1}]},
@@ -470,14 +523,25 @@ function buildCompBars(cs){
 function populateSelects(){
   // Después de homologación el Sheet tiene nombres reales — agrupar por nombre
   const seen={};
-  const pn=D.stats
+  const pn=fStats()
     .map(s=>({apodo:s.jugador, nombre:homolog(s.jugador)}))
     .filter(p=>{ if(seen[p.nombre]) return false; seen[p.nombre]=true; return true; })
     .sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
-  document.getElementById('game-sel').innerHTML=D.partidos.map(p=>`<option value="${p.game_id}">${p.fecha||'—'} · vs ${p.rival} (${p.nuestros}-${p.suyos})</option>`).join('');
+
+  const gameSel=document.getElementById('game-sel');
+  const prevGame=gameSel.value;
+  gameSel.innerHTML=fPartidos().map(p=>`<option value="${p.game_id}">${p.fecha||'—'} · vs ${p.rival} (${p.nuestros}-${p.suyos})</option>`).join('');
+  if([...gameSel.options].some(o=>o.value===prevGame)) gameSel.value=prevGame;
+
   // Usar nombre como value (no apodo) porque el Sheet ya está homologado
-  ['player-sel','cmp-a','cmp-b'].forEach(id=>{ const sel=document.getElementById(id); if(!sel) return; sel.innerHTML=pn.map(p=>`<option value="${p.nombre}">${p.nombre}</option>`).join(''); });
-  if(document.getElementById('cmp-b')&&pn.length>1) document.getElementById('cmp-b').selectedIndex=1;
+  ['player-sel','cmp-a','cmp-b'].forEach(id=>{
+    const sel=document.getElementById(id); if(!sel) return;
+    const prev=sel.value;
+    sel.innerHTML=pn.map(p=>`<option value="${p.nombre}">${p.nombre}</option>`).join('');
+    if(pn.some(p=>p.nombre===prev)) sel.value=prev;
+  });
+  const cmpB=document.getElementById('cmp-b');
+  if(cmpB && pn.length>1 && !pn.some(p=>p.nombre===cmpB.value)) cmpB.selectedIndex=1;
 }
 
 function renderGameDetail(){
@@ -716,13 +780,29 @@ function setMetric(m,btn){ activeMetric=m; document.querySelectorAll('#metric-to
 function renderPlayerProfile(){
   const apodo=document.getElementById('player-sel').value; if(!apodo) return;
   const nombre=apodo; // ya es el nombre real post-homologación
-  const total=D.stats.find(s=>homolog(s.jugador)===apodo)||{};
-  // Agrupar todas las filas del mismo jugador (puede tener múltiples apodos pre-homologación)
-  const byGame=D.statsXP.filter(s=>homolog(s.jugador)===apodo).sort((a,b)=>{
+  // Agrupar todas las filas del mismo jugador (puede tener múltiples apodos pre-homologación), respetando el filtro de torneo
+  const byGame=fStatsXP().filter(s=>homolog(s.jugador)===apodo).sort((a,b)=>{
     const fa=a.fecha||'', fb=b.fecha||'';
     return fa<fb?-1:fa>fb?1:0;
   });
+  const total=sumRows(byGame);
   // pm() es la función global de plus_minus calculado
+
+  // Agrupar por torneo (según fecha) para la progresión cronológica cross-torneo
+  const gameInfo={};
+  D.partidos.forEach(pp=>{ gameInfo[pp.game_id]={torneo:pp.torneo||'—', fecha:pp.fecha||''}; });
+  const torneoMap={};
+  byGame.forEach(s=>{
+    const info=gameInfo[s.game_id]||{torneo:'—', fecha:s.fecha||''};
+    const key=info.torneo||'—';
+    if(!torneoMap[key]) torneoMap[key]={torneo:key, fecha:info.fecha||s.fecha||'', rows:[]};
+    torneoMap[key].rows.push(s);
+    const fx=info.fecha||s.fecha||'';
+    if(fx && (!torneoMap[key].fecha || fx<torneoMap[key].fecha)) torneoMap[key].fecha=fx;
+  });
+  const byTorneo=Object.values(torneoMap)
+    .map(t=>({ torneo:t.torneo, fecha:t.fecha, ...sumRows(t.rows) }))
+    .sort((a,b)=>{ const fa=a.fecha||'', fb=b.fecha||''; return fa<fb?-1:fa>fb?1:0; });
 
   const sG=byGame.reduce((s,x)=>s+n(x.goles),0), sA=byGame.reduce((s,x)=>s+n(x.asistencias),0);
   const sD=byGame.reduce((s,x)=>s+n(x.defensas),0), sREC=byGame.reduce((s,x)=>s+n(x.catches),0);
@@ -795,6 +875,10 @@ function renderPlayerProfile(){
       <div class="cc-title">Progresión por Partido — ${activeMetric.toUpperCase()}</div>
       <canvas id="chart-player-prog" height="90"></canvas>
     </div>
+    <div class="cc" style="margin-bottom:18px">
+      <div class="cc-title">Progresión por Torneo (cronológico) — ${activeMetric.toUpperCase()}</div>
+      <canvas id="chart-player-torneo-prog" height="90"></canvas>
+    </div>
     <div class="sh"><h2>Detalle por Partido</h2><div class="sh-line"></div></div>
     <div class="tbl-wrap"><table class="tbl" id="tbl-jugador">
       <thead><tr>
@@ -851,13 +935,32 @@ function renderPlayerProfile(){
         </tr>
       </tbody>
     </table></div>`;
-  setTimeout(()=>{ makeSortable('tbl-jugador'); buildPlayerChart(byGame); },50);
+  setTimeout(()=>{ makeSortable('tbl-jugador'); buildPlayerChart(byGame); buildPlayerTorneoChart(byTorneo); },50);
 }
 
 function buildPlayerChart(byGame){
   const ctx=document.getElementById('chart-player-prog'); if(!ctx) return;
   if(charts.playerProg){try{charts.playerProg.destroy()}catch(e){}}
   const labels=byGame.map(s=>'vs '+s.rival);
+  const {datasets,scales}=datasetsForMetric(byGame);
+  charts.playerProg=new Chart(ctx,{type:'line',data:{labels,datasets},
+    options:{responsive:true,interaction:{mode:'index',intersect:false},scales,
+      plugins:{legend:{position:'top',labels:{font:{size:9},padding:10}}}}});
+}
+
+function buildPlayerTorneoChart(byTorneo){
+  const ctx=document.getElementById('chart-player-torneo-prog'); if(!ctx) return;
+  if(charts.playerTorneoProg){try{charts.playerTorneoProg.destroy()}catch(e){}}
+  const labels=byTorneo.map(t=>t.torneo+(t.fecha?` (${t.fecha})`:''));
+  const {datasets,scales}=datasetsForMetric(byTorneo);
+  charts.playerTorneoProg=new Chart(ctx,{type:'line',data:{labels,datasets},
+    options:{responsive:true,interaction:{mode:'index',intersect:false},scales,
+      plugins:{legend:{position:'top',labels:{font:{size:9},padding:10}}}}});
+}
+
+// Construye datasets+escalas para la métrica activa a partir de un arreglo de filas
+// (puede ser por partido — byGame — o por torneo agregado — byTorneo — mismas keys numéricas)
+function datasetsForMetric(byGame){
   let datasets=[];
   if(activeMetric==='eficiencia'){
     datasets=[
@@ -892,16 +995,15 @@ function buildPlayerChart(byGame){
     ?{y:{position:'left',ticks:{font:{size:9}},title:{display:true,text:activeMetric==='eficiencia'?'Comp%':'Comp%/10',font:{size:8}}},
       y2:{position:'right',ticks:{font:{size:9}},grid:{drawOnChartArea:false},title:{display:true,text:'Conteo',font:{size:8}}}}
     :{y:{ticks:{font:{size:9}}}};
-  charts.playerProg=new Chart(ctx,{type:'line',data:{labels,datasets},
-    options:{responsive:true,interaction:{mode:'index',intersect:false},scales,
-      plugins:{legend:{position:'top',labels:{font:{size:9},padding:10}}}}});
+  return {datasets,scales};
 }
 
 // ── TAB 4: COMPARAR ────────────────────────────────
 function renderCompare(){
   const apo_a=document.getElementById('cmp-a').value, apo_b=document.getElementById('cmp-b').value;
   if(!apo_a||!apo_b) return;
-  const sA=D.stats.find(s=>homolog(s.jugador)===apo_a)||{}, sB=D.stats.find(s=>homolog(s.jugador)===apo_b)||{};
+  const statsF=fStats();
+  const sA=statsF.find(s=>homolog(s.jugador)===apo_a)||{}, sB=statsF.find(s=>homolog(s.jugador)===apo_b)||{};
   const metrics=[
     {label:'Goles',ka:'goles'},{label:'Asistencias',ka:'asistencias'},{label:'Defensas',ka:'defensas'},
     {label:'+/-',ka:'_pm'},{label:'Comp %',ka:'completion_pct',suffix:'%'},
@@ -933,7 +1035,7 @@ function setLineFilter(f,btn){ lineFilter=f; document.querySelectorAll('.tog').f
 
 function renderLines(){
   const minPts=parseInt(document.getElementById('min-pts').value)||2;
-  const allPts=D.puntos;
+  const allPts=fPuntos();
   const lm={};
 
   allPts.forEach(p=>{
