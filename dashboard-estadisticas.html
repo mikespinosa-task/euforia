@@ -1223,7 +1223,7 @@ function renderEvolucion(){
     </div>
     <div class="cg2" style="margin-bottom:18px">
       <div class="cc"><div class="cc-title">Turnovers por Punto Ofensivo</div><canvas id="chart-evol-turnovers" height="90"></canvas></div>
-      <div class="cc"><div class="cc-title">Defensas (D's) por Punto Defensivo</div><canvas id="chart-evol-defensas" height="90"></canvas></div>
+      <div class="cc"><div class="cc-title">Defensas (D's) vs Break% por Punto Defensivo</div><canvas id="chart-evol-defensas" height="90"></canvas></div>
     </div>
     <div class="sh"><h2>Resumen por Torneo</h2><div class="sh-line"></div></div>
     <div class="tbl-wrap"><table class="tbl" id="tbl-evolucion">
@@ -1288,8 +1288,13 @@ function buildEvolucionCharts(stats){
 
   const ctxDef=document.getElementById('chart-evol-defensas');
   if(ctxDef) charts.evolDefensas=new Chart(ctxDef,{type:'line',data:{labels,datasets:[
-    {label:"D's / Pto D",data:stats.map(s=>s.defPerPtD.toFixed(2)),borderColor:BC,backgroundColor:'rgba(26,95,160,0.08)',tension:0.3,fill:true,borderWidth:2.5,pointRadius:4},
-  ]},options:{responsive:true,scales:{y:{min:0,ticks:{font:{size:9}}},x:{ticks:{font:{size:9}}}},
+    {label:"D's / Pto D",data:stats.map(s=>s.defPerPtD.toFixed(2)),borderColor:BC,backgroundColor:'rgba(26,95,160,0.08)',tension:0.3,fill:true,borderWidth:2.5,pointRadius:4,yAxisID:'y'},
+    {label:'Break%',data:stats.map(s=>s.breakPct.toFixed(1)),borderColor:GLC,backgroundColor:'transparent',tension:0.3,fill:false,borderWidth:2,pointRadius:4,borderDash:[5,3],yAxisID:'y2'},
+  ]},options:{responsive:true,interaction:{mode:'index',intersect:false},
+    scales:{
+      y:{position:'left',min:0,ticks:{font:{size:9}},title:{display:true,text:"D's/Pto D",font:{size:8}}},
+      y2:{position:'right',min:0,max:100,ticks:{font:{size:9}},grid:{drawOnChartArea:false},title:{display:true,text:'Break%',font:{size:8}}},
+    },
     plugins:{legend:{position:'top',labels:{font:{size:9}}}}}});
 
   const ctx5=document.getElementById('chart-evol-duration');
