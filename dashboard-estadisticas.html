@@ -157,6 +157,7 @@ footer strong{color:rgba(255,255,255,0.55)}
   <button class="nav-btn" onclick="showTab('jugador',this)">Jugador</button>
   <button class="nav-btn" onclick="showTab('comparar',this)">Comparar</button>
   <button class="nav-btn" onclick="showTab('lineas',this)">Líneas</button>
+  <button class="nav-btn" onclick="showTab('evolucion',this)">Evolución</button>
 </nav>
 
 <div class="torneo-bar">
@@ -215,6 +216,9 @@ footer strong{color:rgba(255,255,255,0.55)}
       </select>
     </div>
     <div id="lines-content"></div>
+  </div>
+  <div id="tab-evolucion" class="section">
+    <div id="evolucion-content"></div>
   </div>
 </main>
 
@@ -336,7 +340,7 @@ async function loadAll(){
     jugadores.forEach(j=>{ if(j.apodo&&j.nombre) D.homolog[j.apodo.trim()]=j.nombre.trim(); });
     destroyCharts();
     populateTorneoSelect();
-    renderResumen(); populateSelects(); renderGameDetail(); renderPlayerProfile(); renderCompare(); renderLines();
+    renderResumen(); populateSelects(); renderGameDetail(); renderPlayerProfile(); renderCompare(); renderLines(); renderEvolucion();
   } catch(e) {
     document.getElementById('resumen-content').innerHTML=`<div class="error-wrap">❌ Error: ${e.message}<br><small>Verifica que el Sheet sea público.</small></div>`;
   }
@@ -1142,6 +1146,150 @@ function renderLines(){
         y:{title:{display:true,text:'% Conversión',font:{size:8}},ticks:{font:{size:8}},min:0,max:100}
       }}});
   },50);
+}
+
+// ── TAB 6: EVOLUCIÓN ───────────────────────────────
+// Esta pestaña compara TORNEOS entre sí, así que deliberadamente ignora el
+// filtro global de torneo y siempre usa los datos completos (D.*, no f*()).
+function renderEvolucion(){
+  const el=document.getElementById('evolucion-content'); if(!el) return;
+  if(!D.partidos.length){ el.innerHTML='<div class="error-wrap">Sin datos aún.</div>'; return; }
+
+  const torneoInfo={};
+  D.partidos.forEach(p=>{
+    const t=p.torneo||'—';
+    if(!torneoInfo[t]) torneoInfo[t]={torneo:t, fecha:p.fecha||'', partidos:[]};
+    torneoInfo[t].partidos.push(p);
+    if(p.fecha && (!torneoInfo[t].fecha || p.fecha<torneoInfo[t].fecha)) torneoInfo[t].fecha=p.fecha;
+  });
+
+  const stats=Object.values(torneoInfo).map(info=>{
+    const ids=new Set(info.partidos.map(p=>p.game_id));
+    const puntosT=D.puntos.filter(p=>ids.has(p.game_id));
+    const statsXPT=D.statsXP.filter(s=>ids.has(s.game_id));
+    const wins=info.partidos.filter(p=>p.resultado==='W').length, losses=info.partidos.length-wins;
+    const gf=info.partidos.reduce((s,p)=>s+n(p.nuestros),0), gc=info.partidos.reduce((s,p)=>s+n(p.suyos),0);
+    const ptsO=puntosT.filter(p=>p.line_type==='O'), ptsD=puntosT.filter(p=>p.line_type==='D');
+    const convO=ptsO.filter(p=>p.goleador).length, convD=ptsD.filter(p=>p.goleador).length;
+    const holdPct=ptsO.length?convO/ptsO.length*100:0, breakPct=ptsD.length?convD/ptsD.length*100:0;
+    const turnovers=statsXPT.reduce((s,x)=>s+n(x.throwaways)+n(x.drops),0);
+    const turnoversPerPtO=ptsO.length?turnovers/ptsO.length:0;
+    const totalLanz=statsXPT.reduce((s,x)=>s+n(x.lanzamientos),0), totalComp=statsXPT.reduce((s,x)=>s+n(x.completados),0);
+    const compPct=totalLanz>0?totalComp/totalLanz*100:0;
+    const durO=ptsO.filter(p=>n(p.duracion_seg)>0), durD=ptsD.filter(p=>n(p.duracion_seg)>0);
+    const avgDurO=durO.length?durO.reduce((s,p)=>s+n(p.duracion_seg),0)/durO.length:0;
+    const avgDurD=durD.length?durD.reduce((s,p)=>s+n(p.duracion_seg),0)/durD.length:0;
+    return { torneo:info.torneo, fecha:info.fecha, partidos:info.partidos.length, wins, losses,
+      winPct:info.partidos.length?wins/info.partidos.length*100:0, gf, gc, diff:gf-gc,
+      holdPct, breakPct, turnoversPerPtO, compPct, avgDurO, avgDurD };
+  }).sort((a,b)=>{ const fa=a.fecha||'', fb=b.fecha||''; return fa<fb?-1:fa>fb?1:0; });
+
+  const hayTendencia=stats.length>=2;
+  const first=stats[0], last=stats[stats.length-1];
+  const trendCard=(label,vFirst,vLast,suffix,invert)=>{
+    const delta=vLast-vFirst;
+    const up=delta>0, good=invert?!up:up;
+    const color=Math.abs(delta)<0.05?'var(--muted)':(good?GC:RC);
+    const arrow=Math.abs(delta)<0.05?'—':(up?'▲':'▼');
+    return `<div class="mc" style="border-top-color:${color}">
+      <div class="mc-val" style="color:${color};font-size:1.5rem">${arrow} ${Math.abs(delta).toFixed(1)}${suffix}</div>
+      <div class="mc-lbl">${label}</div>
+      <div style="font-size:0.68rem;color:var(--muted);margin-top:3px">${vFirst.toFixed(1)}${suffix} → ${vLast.toFixed(1)}${suffix}</div>
+    </div>`;
+  };
+
+  const tendenciaHtml=hayTendencia?`
+    <div class="sh"><h2>Tendencia: ${first.torneo} → ${last.torneo}</h2><div class="sh-line"></div></div>
+    <div class="mc-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px">
+      ${trendCard('Hold%',first.holdPct,last.holdPct,'%',false)}
+      ${trendCard('Break%',first.breakPct,last.breakPct,'%',false)}
+      ${trendCard('Diferencial/Partido',first.diff/(first.partidos||1),last.diff/(last.partidos||1),'',false)}
+      ${trendCard('Turnovers/Pto O',first.turnoversPerPtO,last.turnoversPerPtO,'',true)}
+    </div>`:`<div class="error-wrap" style="margin-bottom:20px">Necesitas al menos 2 torneos con partidos para ver una tendencia. Por ahora solo hay datos de: ${stats.map(s=>s.torneo).join(', ')}.</div>`;
+
+  el.innerHTML=`
+    <div class="sh"><h2>Evolución por Torneo</h2><div class="sh-line"></div></div>
+    <div style="font-size:0.78rem;color:var(--muted);margin-bottom:16px">Esta vista compara TODOS los torneos entre sí — no obedece el filtro de torneo de arriba.</div>
+    ${tendenciaHtml}
+    <div class="cg2" style="margin-bottom:18px">
+      <div class="cc"><div class="cc-title">Hold% vs Break% por Torneo</div><canvas id="chart-evol-holdbreak" height="90"></canvas></div>
+      <div class="cc"><div class="cc-title">Diferencial de Goles por Torneo</div><canvas id="chart-evol-diff" height="90"></canvas></div>
+    </div>
+    <div class="cg2" style="margin-bottom:18px">
+      <div class="cc"><div class="cc-title">Récord (Victorias / Derrotas) por Torneo</div><canvas id="chart-evol-record" height="90"></canvas></div>
+      <div class="cc"><div class="cc-title">Turnovers por Punto Ofensivo</div><canvas id="chart-evol-turnovers" height="90"></canvas></div>
+    </div>
+    <div class="cc" style="margin-bottom:18px">
+      <div class="cc-title">Duración Promedio del Punto — O-Line vs D-Line (segundos)</div>
+      <canvas id="chart-evol-duration" height="70"></canvas>
+    </div>
+    <div class="sh"><h2>Resumen por Torneo</h2><div class="sh-line"></div></div>
+    <div class="tbl-wrap"><table class="tbl" id="tbl-evolucion">
+      <thead><tr>
+        <th>Torneo</th><th class="c">Partidos</th><th class="c">Récord</th><th class="c">Win%</th>
+        <th class="c">GF</th><th class="c">GC</th><th class="c">Diff</th>
+        <th class="c">Hold%</th><th class="c">Break%</th><th class="c">Comp%</th>
+        <th class="c">TO/Pto O</th><th class="c">Dur. O</th><th class="c">Dur. D</th>
+      </tr></thead>
+      <tbody>
+        ${stats.map(s=>`<tr>
+          <td><strong>${s.torneo}</strong></td>
+          <td class="c" data-sort="${s.partidos}">${s.partidos}</td>
+          <td class="c" data-sort="${s.wins}">${s.wins}-${s.losses}</td>
+          <td class="c" data-sort="${s.winPct}" style="font-weight:700;color:${s.winPct>=50?GC:RC}">${s.winPct.toFixed(0)}%</td>
+          <td class="c" data-sort="${s.gf}">${s.gf}</td>
+          <td class="c" data-sort="${s.gc}">${s.gc}</td>
+          <td class="c" data-sort="${s.diff}" style="font-weight:700;color:${s.diff>=0?GC:RC}">${s.diff>=0?'+':''}${s.diff}</td>
+          <td class="c" data-sort="${s.holdPct}" style="color:${RC};font-weight:700">${s.holdPct.toFixed(1)}%</td>
+          <td class="c" data-sort="${s.breakPct}" style="color:${BC};font-weight:700">${s.breakPct.toFixed(1)}%</td>
+          <td class="c" data-sort="${s.compPct}">${s.compPct.toFixed(1)}%</td>
+          <td class="c" data-sort="${s.turnoversPerPtO}">${s.turnoversPerPtO.toFixed(2)}</td>
+          <td class="c" data-sort="${s.avgDurO}">${s.avgDurO?Math.round(s.avgDurO)+'s':'—'}</td>
+          <td class="c" data-sort="${s.avgDurD}">${s.avgDurD?Math.round(s.avgDurD)+'s':'—'}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+
+  setTimeout(()=>{ makeSortable('tbl-evolucion'); buildEvolucionCharts(stats); },50);
+}
+
+function buildEvolucionCharts(stats){
+  ['evolHoldBreak','evolDiff','evolRecord','evolTurnovers','evolDuration'].forEach(k=>{ if(charts[k]){try{charts[k].destroy()}catch(e){}} });
+  const labels=stats.map(s=>s.torneo);
+
+  const ctx1=document.getElementById('chart-evol-holdbreak');
+  if(ctx1) charts.evolHoldBreak=new Chart(ctx1,{type:'line',data:{labels,datasets:[
+    {label:'Hold%',data:stats.map(s=>s.holdPct.toFixed(1)),borderColor:RC,backgroundColor:'rgba(192,39,45,0.08)',tension:0.3,fill:true,borderWidth:2.5,pointRadius:4},
+    {label:'Break%',data:stats.map(s=>s.breakPct.toFixed(1)),borderColor:BC,backgroundColor:'rgba(26,95,160,0.08)',tension:0.3,fill:true,borderWidth:2.5,pointRadius:4},
+  ]},options:{responsive:true,interaction:{mode:'index',intersect:false},
+    scales:{y:{min:0,max:100,ticks:{font:{size:9}}},x:{ticks:{font:{size:9}}}},
+    plugins:{legend:{position:'top',labels:{font:{size:9},padding:10}}}}});
+
+  const ctx2=document.getElementById('chart-evol-diff');
+  if(ctx2) charts.evolDiff=new Chart(ctx2,{type:'bar',data:{labels,datasets:[
+    {label:'Diferencial',data:stats.map(s=>s.diff),backgroundColor:stats.map(s=>s.diff>=0?'rgba(29,107,62,0.65)':'rgba(192,39,45,0.65)'),borderColor:stats.map(s=>s.diff>=0?GC:RC),borderWidth:1},
+  ]},options:{responsive:true,plugins:{legend:{display:false}},scales:{x:{ticks:{font:{size:9}}},y:{ticks:{font:{size:9}}}}}});
+
+  const ctx3=document.getElementById('chart-evol-record');
+  if(ctx3) charts.evolRecord=new Chart(ctx3,{type:'bar',data:{labels,datasets:[
+    {label:'Victorias',data:stats.map(s=>s.wins),backgroundColor:'rgba(29,107,62,0.65)',borderColor:GC,borderWidth:1},
+    {label:'Derrotas',data:stats.map(s=>s.losses),backgroundColor:'rgba(192,39,45,0.55)',borderColor:RC,borderWidth:1},
+  ]},options:{responsive:true,scales:{x:{stacked:true,ticks:{font:{size:9}}},y:{stacked:true,ticks:{font:{size:9},stepSize:1}}},
+    plugins:{legend:{position:'top',labels:{font:{size:9}}}}}});
+
+  const ctx4=document.getElementById('chart-evol-turnovers');
+  if(ctx4) charts.evolTurnovers=new Chart(ctx4,{type:'line',data:{labels,datasets:[
+    {label:'Turnovers / Pto O',data:stats.map(s=>s.turnoversPerPtO.toFixed(2)),borderColor:'#f97316',backgroundColor:'rgba(249,115,22,0.08)',tension:0.3,fill:true,borderWidth:2.5,pointRadius:4},
+  ]},options:{responsive:true,scales:{y:{min:0,ticks:{font:{size:9}}},x:{ticks:{font:{size:9}}}},
+    plugins:{legend:{position:'top',labels:{font:{size:9}}}}}});
+
+  const ctx5=document.getElementById('chart-evol-duration');
+  if(ctx5) charts.evolDuration=new Chart(ctx5,{type:'line',data:{labels,datasets:[
+    {label:'Duración O-Line',data:stats.map(s=>Math.round(s.avgDurO)),borderColor:RC,backgroundColor:'transparent',tension:0.3,fill:false,borderWidth:2.5,pointRadius:4},
+    {label:'Duración D-Line',data:stats.map(s=>Math.round(s.avgDurD)),borderColor:BC,backgroundColor:'transparent',tension:0.3,fill:false,borderWidth:2.5,pointRadius:4},
+  ]},options:{responsive:true,interaction:{mode:'index',intersect:false},
+    scales:{y:{ticks:{font:{size:9}},title:{display:true,text:'segundos',font:{size:8}}},x:{ticks:{font:{size:9}}}},
+    plugins:{legend:{position:'top',labels:{font:{size:9},padding:10}}}}});
 }
 
 loadAll();
